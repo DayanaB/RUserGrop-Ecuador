@@ -1,0 +1,151 @@
+---
+title: "DOCUMENTO"
+author: "Dayana Bastidas"
+date: "22 de abril de 2018"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+## PRESENTACION MODULO 3
+
+**PRESTAMOS**
+
+La empresa desea automatizar el proceso de elegibilidad del préstamo (en tiempo real) en función del detalle del cliente que se le proporcionó al completar el formulario de solicitud en línea. Estos detalles son Género, Estado civil, Educación, Número de dependientes, Ingresos, Monto del préstamo, Historial de crédito y otros. Para automatizar este proceso, han dado un problema para identificar los segmentos de clientes, que son elegibles para el monto del préstamo para que puedan dirigirse específicamente a estos clientes. Aquí han proporcionado un conjunto de datos parciales.
+
+
+## Resumen de los Datos
+
+
+```{r prestamos, echo=FALSE}
+
+setwd("C:/Users/toshiba/Documents/DocumentosR/")
+train <-read.csv("train.csv",na.strings = c(""," ",NA))
+#str(train)
+attach(train)
+```
+
+Se tiene una tendencia central de ingresos de los solicitantes de un valor de $4910.685 en nuestro Test de datos con respecto a un valor de préstamo de $61.36665 miles solicitados.
+
+```{r mod1, echo=FALSE, warning=FALSE,message=FALSE}
+#install.packages("mlr")
+library(mlr)
+summary(train)
+summarizeColumns(train)
+
+sd(train$ApplicantIncome,na.rm=T)
+sd(train$LoanAmount,na.rm=T)
+```
+
+##GRÁFICOS
+
+El 31% de los clientes el préstamo fue negado y el 69% de los clientes el préstamo fue aprobado.
+
+```{r Factor genero , warning=FALSE,message=FALSE}
+library(ggplot2)
+barplot(table(train$Loan_Status),  xlab='Gender') 
+prop.table(table(train$Loan_Status))
+```
+
+
+##
+En esta gráfica se observa que hay muchos valores atípicos, las distribuciones son asimétricas hacia la derecha.
+
+
+```{r Factor ingresos solocitantes y co solicitantes , warning=FALSE,message=FALSE}
+#par(mfrow=c(1,2))
+boxplot(train$ApplicantIncome,train$CoapplicantIncome,names=c("App Income","Coapp Income"),main="train set")
+```
+
+##
+Este es el único predictor cuya distribución se ve diferente en los dos conjuntos, el 37% se encuentra en un sector semiurbano para en el Train 
+
+```{r Factor area de propiedad  , warning=FALSE,message=FALSE}
+#par(mfrow=c(1,2))
+barplot(table(train$Property_Area),main="train set")
+prop.table(table(train$Property_Area))
+
+```
+
+
+## ANÁLISIS DEL PRÉSTAMO 
+
+Una mayor proporción de solicitantes no casados son rechazados que los solicitantes casados.
+```{r grafico02, warning=FALSE,message=FALSE}
+print(ggplot(train, aes(x=Loan_Status))+geom_bar()+facet_grid(.~Married)+ggtitle("Estado del préstamo por estado civil del solicitante"))
+```
+
+##
+Los solicitantes con historial igual a 0 son rechazados.
+```{r grafico03, warning=FALSE,message=FALSE}
+
+print(ggplot(train, aes(x=Loan_Status))+geom_bar()+facet_grid(.~Credit_History)+ggtitle("Estado del préstamo por historial crediticio del solicitante"))
+
+```
+
+
+##
+Es más fácil obtener un préstamo si la propiedad es semi urbana y más difícil si es rural.
+```{r grafico04, warning=FALSE,message=FALSE}
+
+print(ggplot(train, aes(x=Loan_Status))+geom_bar()+facet_grid(.~Property_Area)+ggtitle("Estado del préstamo por área de propiedad"))
+
+```
+
+## REGRESIÓN LOGÍSTICA 
+El modelo logístico queda de la forma 
+Loan_Status  ~  Property_Area + Credit_History  +  Married
+
+
+```{r  test ,include=FALSE, echo=FALSE}
+
+train$Loan_Status <- ifelse(train$Loan_Status=="Y",1,0)
+mod2 <- step(glm(factor(Loan_Status) ~ factor(Property_Area) + factor(Credit_History)  +
+                   factor(Married) 
+                 , data = train , family = binomial(link = "logit")),direction = "both")
+```
+
+```{r grafico05, warning=FALSE,message=FALSE}
+plot(mod2)
+summary(mod2)
+```
+
+##
+Al observar los coeficientes concluimos que ser tener una propiedad semiurbana triplica la probabilidad de obtener un crédito con respecto a tener una propiedad rural, mientras que tener una propiedad urbana solo aumenta un 20% la probabilidad de acceder al crédito con respecto a una propiedad rural. Similarmente estar casado aumenta un 20% la probabilidad de tener un crédito con respecto a no estar casado. Pero la variable más importante en la aprobación de un crédito es tener un historial crediticio, ya que esta aumenta 50 veces la probabilidad de tener un crédito con respecto a no tener un historial crediticio. Con punto de corte de probabilidad de 0.759, el modelo tiene una especificidad de clasificación del 75%, cuya matriz de confusión es "Loan_Status".
+
+```{r resultado, warning=FALSE,message=FALSE}
+resultado<-predict(mod2,newdata=train,type = 'response') # predecir sobre el conjunto de entrenamiento del modelo
+punto_corte<-0.50 # punto de corte de la probabilidad para asignar a las dos categorias "Y" o "N" del credito
+Loan_Stat <- ifelse(resultado > punto_corte,1,0) 
+misClasificError <- mean(Loan_Stat!= train$Loan_Status,na.rm = T)
+print(paste('precision',1-misClasificError)) #precision de clasificacion
+tt <- data.frame(train$Loan_Status,Loan_Stat) # matriz de confusion
+table(tt)
+```
+## REGRESIÓN MULTILINEAL
+La mayoría de los préstamos son solicitados por solicitantes de bajos ingresos, pero no extremadamente bajos. El género se relaciona con el solicitante. La mayoría de los solicitantes de hombres casados tienen ingresos más altos que las mujeres solicitantes de casados, pero no hay una gran diferencia entre los ingresos de los solicitantes no casados varones y mujeres. Hay más mujeres solicitantes que están casadas que casadas, y lo contrario es cierto para los solicitantes hombres.
+
+```{r regresion , echo=TRUE , warning=FALSE, message=FALSE}
+
+library(dplyr)
+
+
+mod3 <- lm((LoanAmount)~ factor(Property_Area)+ factor(Education) + factor(Gender) +
+             factor(Married)  + factor(Self_Employed) + ApplicantIncome + CoapplicantIncome ,
+           data=train %>% filter(ApplicantIncome< 30000))
+summary(mod3)
+anova(mod3, test="Chisq")
+par(mfrow=c(2,2))
+plot(mod3)
+par(mfrow=c(1,1))
+shapiro.test(mod3$residuals)
+names(summary(mod3))
+summary(mod3)$r.squared
+```
+
+## CONCLUSIONES
+En cuanto al modelo logístico podemos decir que jugando con el punto de corte podemos apuntar a una mejor clasificación de rechazados o aprobados, según desee el analista.  Es importante señalar que como empresa se podría apuntar a clientes con características cuya probabilidad de aceptación de un crédito sea baja otorgar créditos de montos bajos, es decir ajustados a sus características.
